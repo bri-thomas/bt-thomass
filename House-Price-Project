@@ -1,0 +1,149 @@
+title: "House-Price Prediction Model"
+author: "Brian Thomas & Madelyn Subali"
+editors: "Ryan Wangsanegara & Mario Atmadji"
+# Goal: To build a suitable model to help Jacob determine what 
+# predicts home prices in King County and use that model to predict
+# the test home prices
+
+home <- read.csv("house_5.csv", header = TRUE)
+home_test <- read.csv("house_test_5.csv", header = TRUE)
+
+#What we are trying to predict: Price
+# 1. Load Data
+
+library(corrgram)
+library(ggplot2)
+library(ggpubr)
+library(forecast)
+library(scales)
+library(car)
+
+#Remove unnecessary variables
+#Unecessary: X, ID, Year, Month, Day, Day_of_Week, Zipcode, Latitude, and Longitude, Sqft_living15, Sqft_lot15
+#Insignificant Variables: sqft_lot, sqft_basement, yr_renovated
+#They will be removed from the regression
+#They will also be removed from the test variables as well
+
+home <- home[, -c(1:6, 11, 18, 20:25)]
+home_test <- home_test[, -c(1:6, 10, 17, 19:24)]
+head(home)
+names(home)
+str(home)
+summary(home)
+
+# 2. Correlations and Training-Validation Split
+
+set.seed(666)
+
+home_train_index <- sample(1:nrow(home), 0.6 * nrow(home))
+home_valid_index <- setdiff(1:nrow(home), home_train_index)
+
+hometrain_df <- home[home_train_index, ] 
+homevalid_df <- home[home_valid_index, ]
+
+nrow(hometrain_df)
+nrow(homevalid_df)
+head(hometrain_df)
+head(homevalid_df)
+
+corrgram(homevalid_df)
+
+# Sqft_living, Grade, and Sqft_above seems to be the most correlated
+# To try and understand which one is the most correlated between the three
+# We will form a ggplot to see the linear relationship
+
+names(hometrain_df)
+
+#Plot of Sqft_living and Price
+
+ggplot(data = hometrain_df) + aes(x = sqft_living, y = price) +
+  geom_point() +
+  xlim(200, 15000) +
+  ylim(0, 8000000) +
+  ggtitle("Scatter Plot of Homeprice vs Sqft_Living") +
+  geom_smooth(method=lm, se=TRUE) +
+  stat_cor(method = "pearson", label.x = 8000, label.y = 3.8)
+
+#Plot of Grade and Price
+
+ggplot(data = hometrain_df) + aes(x = grade, y = price) +
+  geom_point() +
+  xlim(1, 15) +
+  scale_y_continuous(breaks= pretty_breaks()) +
+  ggtitle("Scatter Plot of Homeprice vs grade") +
+  geom_smooth(method=lm, se=TRUE) +
+  stat_cor(method = "pearson", label.x = 8, label.y = 3.8)
+
+#Plot of sqft_above and Price
+
+ggplot(data = hometrain_df) + aes(x = sqft_above, y = price) +
+  geom_point() +
+  xlim(250, 10000) +
+  scale_y_continuous(breaks= pretty_breaks()) +
+  ggtitle("Scatter Plot of Homeprice vs sqft_above") +
+  geom_smooth(method=lm, se=TRUE) +
+  stat_cor(method = "pearson", label.x = 6000, label.y = 3.8)
+
+#From all three variables, Square-foot Above appears to the best predictor for Price
+
+homeprice_model <- lm(price ~ ., data = hometrain_df)
+summary(homeprice_model)
+
+names(hometrain_df)
+
+vif(homeprice_model)
+#Rule of thumb if VIF > 5; We drop 'sqft_living' and 'sqft_above' which has high 
+#multi-collinearity and its not a good thing to have. 
+
+homeprice_model <- lm(price ~ bedrooms + bathrooms + floors + waterfront + view +
+                        condition + grade + yr_built, data= hometrain_df)
+vif(homeprice_model)
+
+#The model is significant (F = 1339, p < 0.001),
+#and is a very good model, given the high R square and adjusted R square.
+#ALL variables are significant in predicting price.
+#Other than sqft_above, the other variables have the highest significance
+#bedrooms, bathrooms, sqft_living, waterfront, view, grade, and yr_built
+#is the most significant, given its very low p value.
+
+price_model_pred_train <- predict(homeprice_model, hometrain_df)
+price_model_pred <- predict(homeprice_model, homevalid_df)
+
+accuracy(price_model_pred_train, hometrain_df$price)
+accuracy(price_model_pred, homevalid_df$price)
+
+sd(hometrain_df$price)
+sd(homevalid_df$price)
+
+#the RMSE for both valid_df and train_df is rather low, suggesting it is a good model.
+# RMSE < SD which is a rule of thumb of a good model. 
+
+
+# 4. Use the model to predict the house prices for the 3 test homes
+
+home_test1_model <- data.frame(bedrooms = 4, bathrooms = 2.25, 
+                               floors = 2.0, waterfront = 0, view = 0, condition = 3,
+                               grade = 8, yr_built = 1983)
+
+home_test1_pred <- predict(homeprice_model, home_test1_model)
+home_test1_pred
+
+#The predicted price for the 1st test House is $550,602.30
+
+home_test2_model <- data.frame(bedrooms = 5, bathrooms = 2.50, 
+                               floors = 1.5, waterfront = 0, view = 0, condition = 5,
+                               grade = 7, yr_built = 1916)
+
+home_test2_pred <- predict(homeprice_model, home_test2_model)
+home_test2_pred
+
+#The predicted price for the 2nd test House is $707,872.90
+
+home_test3_model <- data.frame(bedrooms = 3, bathrooms = 2.50, 
+                               floors = 1.0, waterfront = 0, view = 0, condition = 4,
+                               grade = 7, yr_built = 1981)
+
+home_test3_pred <- predict(homeprice_model, home_test3_model)
+home_test3_pred
+
+#The predicted price for the 3rd test House is $403,496.90
