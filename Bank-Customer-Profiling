@@ -1,0 +1,183 @@
+library(rpart)
+library(rpart.plot)
+library(forecast)
+library(zoo)
+library(caret)
+library(ROSE)
+# With this data, we are trying to find the prediction of new customers that are likely to 
+# have a high risk of payment difficulties based on their credit card information.
+# 1. Load Data
+credit <- read.csv("credit_5.csv", header=TRUE)
+head(credit,5)
+names(credit)
+str(credit)
+
+# Remove unnecessary column. 
+# We identified that the total income, amount credit and amount annuity, and days employed
+# are going to be the most useful in the prediction of whether customers are high risk or not. 
+
+credit <- credit[ ,c(3, 9:11, 19)] 
+names(credit)
+#REMINDER: 'TARGET' column 3 is the target variable
+# 2. Only Set TARGET as factor.
+credit$TARGET <- as.factor(credit$TARGET)
+
+# 3. Training and Validation set (60%-40%)
+set.seed(666)
+train_index <- sample(1: nrow(credit), 0.6 * nrow(credit))
+valid_index <- setdiff(1:nrow(credit), train_index) 
+train_df <- credit[train_index, ] 
+valid_df <- credit[valid_index, ]
+# Checking the rows 
+nrow(train_df)
+nrow(valid_df)
+head(train_df)
+head(valid_df)
+# New customers
+credit_test_1 <- data.frame( AMT_INCOME_TOTAL= 225000 ,
+                             AMT_CREDIT = 539100,
+                             AMT_ANNUITY= 27652.5,
+                             DAYS_EMPLOYED = -8577 )
+
+credit_test_2 <- data.frame(AMT_INCOME_TOTAL= 171000,
+                            AMT_CREDIT = 171000,
+                            AMT_ANNUITY= 10588.5,
+                            DAYS_EMPLOYED = - 4394 )
+
+credit_test_3 <- data.frame(AMT_INCOME_TOTAL= 180000 ,
+                            AMT_CREDIT = 245268,
+                            AMT_ANNUITY= 19507.5,
+                            DAYS_EMPLOYED = -2692)
+
+credit_test_4 <- data.frame(AMT_INCOME_TOTAL= 270000 ,
+                            AMT_CREDIT = 423000,
+                            AMT_ANNUITY= 17910.0,
+                            DAYS_EMPLOYED = -3445)
+
+credit_test_5 <- data.frame(AMT_INCOME_TOTAL= 135000 ,
+                            AMT_CREDIT = 1107900,
+                            AMT_ANNUITY= 35869.5,
+                            DAYS_EMPLOYED = -4961)
+# Balancing Data
+train_df$TARGET <- as.factor(train_df$TARGET)
+train_df_balanced <- ROSE(TARGET ~ AMT_INCOME_TOTAL + AMT_CREDIT + AMT_ANNUITY + DAYS_EMPLOYED, 
+                          data = train_df, seed = 666)$data
+table(train_df_balanced$TARGET)
+
+# Normalisation
+train_norm <- train_df_balanced
+valid_norm <- valid_df
+norm_values <- preProcess(train_df_balanced[, -c(1)],
+                          method = c("center",
+                                     "scale"))
+train_norm[, -c(1)] <- predict(norm_values,
+                               train_df_balanced[, -c(1)])
+head(train_norm)
+valid_norm[, -c(1)] <- predict(norm_values,
+                               valid_df[, -c(1)])
+head(valid_norm)
+credit_test_1_norm <- predict(norm_values, credit_test_1 )
+credit_test_1_norm
+credit_test_2_norm <- predict(norm_values, credit_test_2 )
+credit_test_2_norm
+credit_test_3_norm <- predict(norm_values, credit_test_3 )
+credit_test_3_norm
+credit_test_4_norm <- predict(norm_values, credit_test_4 )
+credit_test_4_norm
+credit_test_5_norm <- predict(norm_values, credit_test_5 )
+credit_test_5_norm
+
+#kNN Model -- Training Set
+knn_model_k3 <- caret::knn3(TARGET ~ ., data = train_norm, k = 3)
+knn_model_k3
+#Prediction of k = 3
+knn_pred_k3_train <- predict(knn_model_k3, newdata = train_norm[, -c(1)],
+                             type = "class")
+head(knn_pred_k3_train)
+# Check the model on validation set
+confusionMatrix(knn_pred_k3_train, as.factor(train_norm[, 1]))
+
+#kNN Model -- Training Set
+knn_model_k149 <- caret::knn3(TARGET ~ ., data = train_norm, k = 149)
+knn_model_k149
+#Prediction of k = 149
+knn_pred_k149_train <- predict(knn_model_k149, newdata = train_norm[, -c(1)],
+                               type = "class")
+head(knn_pred_k149_train)
+# Check the model on validation set
+confusionMatrix(knn_pred_k149_train, as.factor(train_norm[, 1]))
+
+# kNN Model-- Training Set
+knn_model_k151 <- caret::knn3 (TARGET ~ ., 
+                               data = train_norm, k = 151) 
+knn_model_k151
+# Prediction of k = 151
+knn_pred_k151_train <- predict(knn_model_k151, newdata = train_norm[, -c(1)], 
+                               type = 'class')
+head(knn_pred_k151_train)
+# Check the model on validation set
+confusionMatrix(knn_pred_k151_train, as.factor(train_norm[, 1]),
+                positive = '1')
+
+#kNN Model -- Training Set
+knn_model_k153 <- caret::knn3(TARGET ~ ., data = train_norm, k = 153)
+knn_model_k153
+#Prediction of k = 153
+knn_pred_k153_train <- predict(knn_model_k153, newdata = train_norm[, -c(1)],
+                               type = "class")
+head(knn_pred_k153_train)
+confusionMatrix(knn_pred_k153_train, as.factor(train_norm[, 1]))
+
+print('K=151 has the highest accuracy and P-value when compared to k=149 and k=153.')
+#kNN Model -- Validation Set (still need to pick)
+knn_pred_k151_valid <- predict(knn_model_k151, newdata = valid_norm[, -c(1)],
+                               type = "class")
+head(knn_pred_k151_valid)
+confusionMatrix(knn_pred_k151_valid, as.factor(valid_norm[, 1]))
+
+#ROC Curve 
+ROSE::roc.curve(valid_norm$TARGET,
+                knn_pred_k151_valid)
+
+print('The value of AUC is 0.55 which is a great value for accuracy.')
+
+#Use kNN to predict risk of 5 new credit loaners
+new_credit_pred1<- predict(knn_model_k151,
+                           newdata = credit_test_1_norm,
+                           type = "prob")
+new_credit_pred1
+
+#At an accuracy rate of 57% and a P-value of 79%, there is a 54.6% chance that
+#credit loaner no.1 is NOT high risk.
+
+new_credit_pred2<- predict(knn_model_k151,
+                           newdata = credit_test_2_norm,
+                           type = "prob")
+new_credit_pred2
+
+#At an accuracy rate of 57% and a P-value of 79%, there is a 56.9% chance that
+#credit loaner no.2 is NOT high risk.
+
+new_credit_pred3<- predict(knn_model_k151,
+                           newdata = credit_test_3_norm,
+                           type = "prob")
+new_credit_pred3
+
+#At an accuracy rate of 57% and a P-value of 79%, there is a 50.3% chance that
+#credit loaner no.3 is high risk.
+
+new_credit_pred4<- predict(knn_model_k151,
+                           newdata = credit_test_4_norm,
+                           type = "prob")
+new_credit_pred4
+
+#At an accuracy rate of 57% and a P-value of 79%, there is a 53.6% chance that
+#credit loaner no.4 is NOT high risk.
+
+new_credit_pred5<- predict(knn_model_k151,
+                           newdata = credit_test_5_norm,
+                           type = "prob")
+new_credit_pred5
+
+#At an accuracy rate of 57% and a P-value of 79%, there is a 63.6% chance that
+#credit loaner no.5 is NOT high risk.
