@@ -1,0 +1,39 @@
+library(tidyverse)
+library(purrr)
+library(lubridate)
+library(fixest)
+library(multcomp)
+library(vtable)
+
+##DATA CLEANING
+#Reading in Google Trends Data
+trends <- list.files(path = 'Lab3_Rawdata', pattern = 'trends_up_to_', full.names = TRUE)
+trends <- map_df(trends, read_csv)
+view(trends$monthorweek)
+
+#Aggregating Google Trends Data:
+#Aggregating Date
+help("str_sub")
+monthweekstr <- str_sub(trends$monthorweek, 1, 10)
+ymd(monthweekstr)
+
+#Aggregating Index
+trends %>%
+  group_by(schname) %>%
+  group_by(keyword) %>%
+  mutate(index_id = mean(index/sd(index)))
+
+#Reading Scorecard Data and ID Name Link
+scorecard <- read_csv('Lab3_Rawdata/Most+Recent+Cohorts+(Scorecard+Elements).csv')
+idname <- read_csv('Lab3_Rawdata/id_name_link.csv')
+
+#Merging Scorecard Data
+idname <- idname %>%
+  group_by(schname) %>%
+  mutate(n = n())
+  filter(idname, n == 1)
+join1 <- inner_join(trends, idname, by = 'schname')
+names(scorecard) <- tolower(names(scorecard))
+head(scorecard, 5)
+joindb <- inner_join(join1, scorecard, by = "unitid")
+view(joindb)
